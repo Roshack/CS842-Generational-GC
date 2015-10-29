@@ -1,0 +1,6 @@
+make
+cd tests/
+rm btggggc
+make btggggc
+./btggggc 11
+cd ../

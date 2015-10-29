@@ -1,0 +1,6 @@
+make
+cd tests/
+rm project1-test.o
+make projecttest
+./projecttest
+cd ../

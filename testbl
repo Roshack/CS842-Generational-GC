@@ -1,0 +1,6 @@
+make
+cd tests/
+rm badlll
+make badlll
+./badlll
+cd ../
