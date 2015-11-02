@@ -42,10 +42,6 @@
 #include <sys/mman.h>
 #endif
 
-/* REMOVE THIS FOR SUBMISSION! */
-#include <gc.h>
-/* --- */
-
 #include "ggggc/gc.h"
 #include "ggggc-internals.h"
 
@@ -77,6 +73,33 @@ extern "C" {
 
 #endif
 
+int isYoung(void * obj) {
+    struct GGGGC_Pool * objPool =(struct GGGGC_Pool *) (GGGGC_POOL_OUTER_MASK & (long unsigned int) obj);
+    struct GGGGC_Pool * poolIter = ggggc_sunnyvaleRetirement;
+    int isYoung = 1;
+    while (poolIter) {
+        if (poolIter == (struct GGGGC_Pool *) objPool) {
+            isYoung = 0;
+            break;
+        }
+        poolIter = poolIter->next;
+    }
+    return isYoung;
+}
+
+// Function to write a card when a pointer is written
+void GGGGC_WC(void * obj, void * value) {
+    if (!isYoung(obj) && isYoung(value)) {
+        struct GGGGC_Pool * objPool =(struct GGGGC_Pool *) (GGGGC_POOL_OUTER_MASK & (long unsigned int) obj);
+        ggc_size_t cardIndex = (((ggc_size_t) obj) & GGGGC_POOL_INNER_MASK) >> GGGGC_CARD_SIZE;
+        objPool->remember[cardIndex] = 1;
+        ggc_size_t wordsIntoCard = (((ggc_size_t) obj) & GGGGC_CARD_INNER_MASK)/sizeof(ggc_size_t);
+        if (wordsIntoCard < objPool->firstObjs[cardIndex]) {
+            objPool->firstObjs[cardIndex] = wordsIntoCard;
+        }
+    }
+}
+
 /* pools which are freely available */
 static struct GGGGC_Pool *freePoolsHead, *freePoolsTail;
 
@@ -100,6 +123,12 @@ static struct GGGGC_Pool *newPool(int mustSucceed)
     if (!ret) ret = (struct GGGGC_Pool *) allocPool(mustSucceed);
 
     if (!ret) return NULL;
+
+    ggc_size_t i = 0;
+    for (i = 0; i < GGGGC_CARDS_PER_POOL; i++) {
+        ret->remember[i] = 0;
+        ret->firstObjs[i] = GGGGC_FIRST_OBJ_DEFAULT;
+    }
 
     /* set it up */
     ret->next = NULL;
@@ -158,8 +187,9 @@ void ggggc_freeGeneration(struct GGGGC_Pool *pool)
 void *ggggc_malloc(struct GGGGC_Descriptor *descriptor)
 {
     /* FILLME */
+    void * userPtr = NULL;
     GGC_YIELD();
-    return GC_MALLOC(descriptor->size * sizeof(void*));
+    return userPtr;
 }
 
 struct GGGGC_Array {

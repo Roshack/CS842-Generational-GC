@@ -1,0 +1,6 @@
+make
+cd tests/
+rm ggggcbench
+make ggggcbench
+./ggggcbench
+cd ../

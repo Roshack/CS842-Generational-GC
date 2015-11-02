@@ -45,15 +45,24 @@ typedef size_t ggc_size_t;
 #ifndef GGGGC_POOL_SIZE
 #define GGGGC_POOL_SIZE 24 /* pool size as a power of 2 */
 #endif
+#ifndef GGGGC_CARD_SIZE
+#define GGGGC_CARD_SIZE 16 /* Card size as power of 2, here I've chosen 64 kibibytes */
+#endif 
+/* since each card is 64 kibibytes it should have 8192 words in it */
 
 /* various sizes and masks */
 #define GGGGC_WORD_SIZEOF(x) ((sizeof(x) + sizeof(ggc_size_t) - 1) / sizeof(ggc_size_t))
 #define GGGGC_POOL_BYTES ((ggc_size_t) 1 << GGGGC_POOL_SIZE)
+#define GGGGC_CARD_BYTES ((ggc_size_t) 1 << GGGGC_CARD_SIZE)
 #define GGGGC_POOL_OUTER_MASK ((ggc_size_t) -1 << GGGGC_POOL_SIZE)
 #define GGGGC_POOL_INNER_MASK (~GGGGC_POOL_OUTER_MASK)
+#define GGGGC_CARD_INNER_MASK (~((ggc_size_t) -1 << GGGGC_CARD_SIZE))
 #define GGGGC_POOL_OF(ptr) ((struct GGGGC_Pool *) ((ggc_size_t) (ptr) & GGGGC_POOL_OUTER_MASK))
 #define GGGGC_BITS_PER_WORD (8*sizeof(ggc_size_t))
 #define GGGGC_WORDS_PER_POOL (GGGGC_POOL_BYTES/sizeof(ggc_size_t))
+#define GGGGC_WORDS_PER_CARD (GGGGC_CARD_BYTES/sizeof(ggc_size_t))
+#define GGGGC_CARDS_PER_POOL (GGGGC_POOL_BYTES/GGGGC_CARD_BYTES)
+#define GGGGC_FIRST_OBJ_DEFAULT  (GGGGC_WORDS_PER_CARD + 1)
 
 /* an empty defined for all the various conditions in which empty defines are necessary */
 #define GGGGC_EMPTY
@@ -63,6 +72,16 @@ struct GGGGC_Pool {
     /* the next pool in this generation */
     struct GGGGC_Pool *next;
 
+    /* Added cards... really these are only needed for the oldest generation so it should
+       be its own struct but I was scared to do that because I was scared to write my own
+       alloc pool function and have to rewrite all the other alloc pools using different OS's
+       memory allocation functions, although I might not have had to actaully do that since they
+       just give me a chunk of memory and all pools are the same size (with or without cards) but
+       hey I decided not to do that yet. Maybe I've done that since writing this comment and you'll never
+       see this comment unless you're me... then again probably not. Oh well bit of wasted memory in young pools.
+    */
+    char remember[GGGGC_CARDS_PER_POOL];
+    unsigned short firstObjs[GGGGC_CARDS_PER_POOL];
     /* the current free space and end of the pool */
     ggc_size_t *free, *end;
 
@@ -103,6 +122,12 @@ struct GGGGC_PointerStack {
     ggc_size_t size;
     void *pointers[1];
 };
+
+// Returns 
+int isYoung(void * obj);
+
+// Function to write a card when a pointer is written
+void GGGGC_WC(void * obj, void * value);
 
 /* macro for making descriptors of types */
 #if defined(__GNUC__) && !defined(GGGGC_NO_GNUC_CONSTRUCTOR)
@@ -187,6 +212,7 @@ static type ## __descriptorSlotConstructor type ## __descriptorSlotConstructorIn
     GGGGC_ASSERT_ID(object); \
     GGGGC_ASSERT_ID(value); \
     (object)->member = (value); \
+    GGGGC_WC(object,value); \
 } while(0)
 #define GGGGC_WD(object, member, value) do { \
     GGGGC_ASSERT_ID(object); \

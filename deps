@@ -1,0 +1,11 @@
+allocate-malign.o: allocate-malign.c
+allocate-malloc.o: allocate-malloc.c
+allocate-mmap.o: allocate-mmap.c
+allocate-win-valloc.o: allocate-win-valloc.c
+allocate.o: allocate.c ggggc/gc.h ggggc/push.h ggggc-internals.h \
+ allocate-malign.c
+collect.o: collect.c ggggc/gc.h ggggc/push.h ggggc-internals.h
+gen-barriers.o: gen-barriers.c
+globals.o: globals.c ggggc-internals.h ggggc/gc.h ggggc/push.h
+pushgen.o: pushgen.c
+roots.o: roots.c ggggc/gc.h ggggc/push.h

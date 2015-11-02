@@ -55,7 +55,8 @@ int main(int argc, char* argv[])
     G = NewGraphNode(NULL,NULL,NULL,NULL,0);
     // Nothing points back to A except G and A is the only one pointing to G so if we remove A
     // it shouldn't still be in our memory and if we remove G after it also shouldn't be.
-    long unsigned int holder = (long unsigned int) &A;
+    long unsigned int holderA = (long unsigned int) &A;
+    long unsigned int holderG = (long unsigned int) &G;
     GGC_WP(A,First,B);
     GGC_WP(A,Second,C);
     GGC_WP(A,Third,D);
@@ -81,10 +82,18 @@ int main(int argc, char* argv[])
     GGC_WP(F,Third,C);
     GGC_WP(F,Fourth,D);
     printf("A check is %d should be 0\r\n", GGC_RD(A,check));
+    printf("G check is %d should be 0\r\n", GGC_RD(G,check));
+    printf("C check is %d should be 0\r\n", GGC_RD(C,check));
     A = NULL;
-    G = NULL;
     useMemory(3000000);
     // Should have collected at least a few times which means memory should have been over written 
-    printf("A check is %d should be random data as that space has been allocated, recollected and reallocated likely. If it is zero every run something is wrong.\r\n", GGC_RD(((GraphNode) holder),check));
+    printf("A check is %d should be random data as that space has been allocated, recollected and reallocated likely. If it is zero every run something is wrong.\r\n", GGC_RD(((GraphNode) holderA),check));
+    printf("G check is %d should be 0\r\n", GGC_RD(G,check));
+    printf("C check is %d should be 0\r\n", GGC_RD(C,check));
+    G = NULL;
+    useMemory(3000000);
+    printf("A check is %d should be random data as that space has been allocated, recollected and reallocated likely. If it is zero every run something is wrong.\r\n", GGC_RD(((GraphNode) holderA),check));
+    printf("G check is %d should be random data as that space has been allocated, recollected and reallocated likely. If it is zero every run something is wrong.\r\n", GGC_RD(((GraphNode) holderG),check));
+    printf("C check is %d should be 0\r\n", GGC_RD(C,check));
     
 }
