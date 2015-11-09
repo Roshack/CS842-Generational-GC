@@ -29,10 +29,10 @@ extern "C" {
 void ggggc_collect();
 
 /* the pools are thread-local */
-extern struct GGGGC_Pool *ggggc_babyList;
-extern struct GGGGC_Pool *ggggc_tweenFromList;
-extern struct GGGGC_Pool *ggggc_tweenToList;
+extern struct GGGGC_Pool *ggggc_fromList;
+extern struct GGGGC_Pool *ggggc_toList;
 extern struct GGGGC_Pool *ggggc_sunnyvaleRetirement;
+extern struct GGGGC_Pool *ggggc_curOldPool;
 
 /* the current allocation pool */
 extern struct GGGGC_Pool *ggggc_curPool;

@@ -63,9 +63,38 @@ typedef size_t ggc_size_t;
 #define GGGGC_WORDS_PER_CARD (GGGGC_CARD_BYTES/sizeof(ggc_size_t))
 #define GGGGC_CARDS_PER_POOL (GGGGC_POOL_BYTES/GGGGC_CARD_BYTES)
 #define GGGGC_FIRST_OBJ_DEFAULT  (GGGGC_WORDS_PER_CARD + 1)
+#define lui (long unsigned int)
 
 /* an empty defined for all the various conditions in which empty defines are necessary */
 #define GGGGC_EMPTY
+
+extern int ggggc_forceCollect;
+extern int ggggc_forceFullCollect;
+
+// Check if an object has already been moved
+long unsigned int alreadyMoved(void * x);
+
+// Is it time to promote an object yet?
+ggc_size_t isOldEnough(void *x);
+
+
+// Clean the age bits off a newly promoted object.
+void cleanAge(void *x);
+
+// Increment the age of an object.
+void incrementAge(void *x);
+
+// Scan a worklist object
+void scan(void *x);
+
+// Forward an object
+void * forward(void * from);
+
+// Return thej cleaned forward address for the moved object at x.
+void * cleanForwardAddress(void * x);
+
+// Process objects
+void ggggc_process(void * x);
 
 /* GC pool (forms a list) */
 struct GGGGC_Pool {

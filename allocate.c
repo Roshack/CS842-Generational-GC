@@ -183,14 +183,68 @@ void ggggc_freeGeneration(struct GGGGC_Pool *pool)
     freePoolsTail = pool;
 }
 
+/* Function when allocating an object to zero out all
+   it's internal space past the header */
+void ggggc_zero_object(struct GGGGC_Header *hdr)
+{
+    /*
+    if (hdr->descriptor__ptr->size == 0) {
+        return; // Why would we allocate object of size 0? stop it.
+    }*/
+    ggc_size_t size = hdr->descriptor__ptr->size - GGGGC_WORD_SIZEOF(*hdr);
+    ggc_size_t i = 0;
+    ggc_size_t * iter = ((ggc_size_t *) hdr) + 1;
+    while (i < size) {
+        iter[i] = 0;
+        i++;
+    }
+    return;
+}
+
+/* allocate an object */
 /* allocate an object */
 void *ggggc_malloc(struct GGGGC_Descriptor *descriptor)
 {
-    /* FILLME */
-    void * userPtr = NULL;
     GGC_YIELD();
+    void * userPtr = NULL;
+    struct GGGGC_Header header;
+    header.descriptor__ptr = descriptor;
+    if (!ggggc_curPool) {
+        ggggc_curPool = ggggc_fromList = newPool(1);
+        ggggc_toList = newPool(1);
+        ggggc_sunnyvaleRetirement = ggggc_curOldPool = newPool(1);
+        ggggc_forceCollect = 0;
+        ggggc_forceFullCollect = 0;
+    }
+
+
+    ggc_size_t size = descriptor->size;
+    if (ggggc_curPool->free + size >= ggggc_curPool->end) {
+        if (ggggc_curPool->next) {
+            ggggc_curPool = ggggc_curPool->next;
+            return ggggc_malloc(descriptor);
+        }
+        struct GGGGC_Pool *temp = newPool(1);
+        ggggc_curPool->next = temp;
+        ggggc_curPool = temp;
+        temp = newPool(1);
+        struct GGGGC_Pool *poolIter = ggggc_toList;
+        while(poolIter) {
+            if (!(poolIter->next)) {
+                poolIter->next = temp;
+                break;
+            }
+            poolIter = poolIter->next;
+        }
+        ggggc_forceCollect = 1;
+    }
+    userPtr = (ggggc_curPool->free);
+    ggggc_curPool->free += size;
+    ((struct GGGGC_Header *) userPtr)[0] = header;
+    ggggc_zero_object((struct GGGGC_Header*)userPtr);
     return userPtr;
 }
+
 
 struct GGGGC_Array {
     struct GGGGC_Header header;
