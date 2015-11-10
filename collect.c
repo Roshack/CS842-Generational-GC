@@ -253,7 +253,7 @@ void * forward(void * from)
                 // and be very sad about this fact.
                 ggggc_forceFullCollect = 1;
             }
-        } 
+        }
     }
     if (!toRef) {
         if (ggggc_curPool->free + descriptor->size < ggggc_curPool->end) {
