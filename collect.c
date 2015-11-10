@@ -153,6 +153,19 @@ void ggggc_collect()
     if(ggggc_forceFullCollect) {
         ggggc_collectFull();
     }
+    
+    /*
+    struct GGGGC_Pool * poolIter = ggggc_fromList;
+    while (poolIter) {
+        ggc_size_t * objIter = poolIter->start;
+        while (objIter < poolIter->free) {
+            struct GGGGC_Header * obj = (struct GGGGC_Header *) objIter;
+            printf("Have object %lx with descriptor pointer %lx\r\n", lui obj, lui obj->descriptor__ptr);
+            objIter += obj->descriptor__ptr->size;
+        }
+        poolIter = poolIter->next;
+    }
+    */
     // Now updated references.
     // Deprecated since implementing a cleaner cheney's algorithm.
     //ggggc_updateRefs();
@@ -183,32 +196,43 @@ void scan(void *x) {
 }
 
 
+ggc_size_t ageSizeT(void * x) {
+    return ((ggc_size_t) x) & 6L;
+}
+
 void ggggc_process(void * x) {
-    struct GGGGC_Header * obj = *((struct GGGGC_Header **) x);
+    struct GGGGC_Header * obj = returnCleanAge((void *) *((struct GGGGC_Header **) x));
+    struct GGGGC_Header * uncleanObj =  *((struct GGGGC_Header **) x);
     if (obj && isYoung((void *) obj)) {
-        *((struct GGGGC_Header **) x) = (struct GGGGC_Header *) forward((void *) obj);
+        *((struct GGGGC_Header **) x) = (struct GGGGC_Header *) forward((void *) uncleanObj);
+        *((struct GGGGC_Header **) x) = (struct GGGGC_Header *) (((ggc_size_t) *((struct GGGGC_Header **) x)) | ageSizeT(uncleanObj));
     }
 }
 
 long unsigned int alreadyMoved(void * x) {
     // Check if the lowest order bit of the "descriptor ptr" is set. If it is
     // then this object has been moved (and that's not a descriptor ptr but a forward address)
-    return (long unsigned int) ((struct GGGGC_Header *) x)->descriptor__ptr & 1L;
+    struct GGGGC_Header * obj = (struct GGGGC_Header *) returnCleanAge(x);
+    return (long unsigned int) ((struct GGGGC_Header *) obj)->descriptor__ptr & 1L;
 }
 
 void * cleanForwardAddress(void * x) {
-    struct GGGGC_Header * header = (struct GGGGC_Header *) x;
+    struct GGGGC_Header * header = (struct GGGGC_Header *) returnCleanAge(x);
     return (void *) ((long unsigned int) header->descriptor__ptr & 0xFFFFFFFFFFFFFFF8 );
 }
 
-void * forward(void * toBeForwarded)
+void * cleanForwardBit(void * x) {
+    struct GGGGC_Header * header = (struct GGGGC_Header *) returnCleanAge(x);
+    return (void *) ((long unsigned int) header->descriptor__ptr & 0xFFFFFFFFFFFFFFFE );
+}
+
+void * forward(void * from)
 {
-    void * from = returnCleanAge(toBeForwarded);
     if (alreadyMoved(from)) {
-        return cleanForwardAddress(from);
+        return cleanForwardBit(from);
     }
     struct GGGGC_Header * toRef = NULL;
-    struct GGGGC_Header * fromRef = (struct GGGGC_Header *) from;
+    struct GGGGC_Header * fromRef = (struct GGGGC_Header *) returnCleanAge(from);
     struct GGGGC_Descriptor * descriptor =cleanForwardAddress(from);
     if (isOldEnough(from)) {
         if (ggggc_curOldPool->free + descriptor->size < ggggc_curOldPool->end) {
@@ -255,7 +279,6 @@ void * forward(void * toBeForwarded)
     if(isOldEnough(from) && !isHalfCollected(from)) {
         // If it's old enough and it's not half collected me promoted it succesfully.
         // need to maybe update cards if necessary.
-        
         cleanAge((void *) toRef);
         struct GGGGC_Descriptor * desc = toRef->descriptor__ptr;
         if (desc->pointers[0]&1) {
@@ -278,13 +301,13 @@ void * forward(void * toBeForwarded)
         // into actually meaningful bits!
         incrementAge((void *) toRef);
     }
-    StackLL_Push(toRef);
-    return(toRef);  
+    StackLL_Push((void *) toRef);
+    return((void *) toRef);  
 }
 
 ggc_size_t isOldEnough(void *x) {
-    ggc_size_t header = (ggc_size_t) x;
-    return (header & (1L<<2));
+    ggc_size_t desc = (ggc_size_t) ((struct GGGGC_Header *) x)->descriptor__ptr;
+    return (desc & (1L<<2));
 }
 
 int isHalfCollected(void *x) {
@@ -302,7 +325,7 @@ void cleanAge(void * x) {
 void incrementAge(void *x) {
     // If the object has survived 0 GC cycles yet this will set it's first age bit,
     // if it's survived one already the first age bit will carry to the next age bit!
-    struct GGGGC_Header * header = (struct GGGGC_Header *) x;
+    struct GGGGC_Header * header = (struct GGGGC_Header *) returnCleanAge(x);
     header->descriptor__ptr = (struct GGGGC_Descriptor *) ( ((ggc_size_t) header->descriptor__ptr) + (1L << 1) );
 }
 

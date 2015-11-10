@@ -99,6 +99,9 @@ void * forward(void * from);
 // Return thej cleaned forward address for the moved object at x.
 void * cleanForwardAddress(void * x);
 
+// Get the bits that need to be set for an age.
+ggc_size_t ageSizeT(void * x);
+
 // Process objects
 void ggggc_process(void * x);
 
