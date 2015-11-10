@@ -81,8 +81,14 @@ ggc_size_t isOldEnough(void *x);
 // Clean the age bits off a newly promoted object.
 void cleanAge(void *x);
 
+// Returns a pointer to the object cleaned of age without actually altering the object.
+void * returnCleanAge(void *x);
+
 // Increment the age of an object.
 void incrementAge(void *x);
+
+// Check if an object was caught in a half collected state.
+int isHalfCollected(void *x);
 
 // Scan a worklist object
 void scan(void *x);
