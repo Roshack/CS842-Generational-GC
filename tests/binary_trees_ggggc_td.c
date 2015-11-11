@@ -100,7 +100,7 @@ int main(int argc, char* argv[])
     for (depth = minDepth; depth <= maxDepth; depth += 2)
     {
         long    i, iterations, check;
-        ggggc_collectFull();
+        //ggggc_collectFull();
         iterations = pow(2, maxDepth - depth + minDepth);
 
         check = 0;
@@ -123,7 +123,7 @@ int main(int argc, char* argv[])
         );
     } /* for(depth = minDepth...) */
     
-    ggggc_collectFull();
+    //ggggc_collectFull();
     printf
     (
         "long lived tree of depth %u\t check: %li\n",
