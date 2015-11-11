@@ -110,6 +110,8 @@ ggc_size_t ageSizeT(void * x);
 // Process objects
 void ggggc_process(void * x);
 
+void * cleanForwardBit(void * x);
+
 struct GGGGC_FreeObject {
     struct GGGGC_Descriptor *descriptor__ptr;
     ggc_size_t size;

@@ -37,6 +37,13 @@ extern struct GGGGC_Pool *ggggc_curOldPool;
 /* the current allocation pool */
 extern struct GGGGC_Pool *ggggc_curPool;
 
+extern int ggggc_forceOldExpand;
+
+void ggggc_youngProcess(void * x);
+void youngScan(void * x);
+void process_youngPseudoRoots();
+void * youngForward(void * x);
+
 /* descriptor descriptors */
 extern struct GGGGC_Descriptor *ggggc_descriptorDescriptors[GGGGC_WORDS_PER_POOL/GGGGC_BITS_PER_WORD+sizeof(struct GGGGC_Descriptor)];
 

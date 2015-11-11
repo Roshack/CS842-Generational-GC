@@ -17,5 +17,6 @@ struct GGGGC_FreeObject *ggggc_oldFreeList;
 
 int ggggc_forceCollect;
 int ggggc_forceFullCollect;
+int ggggc_forceOldExpand;
 
 static struct GGGGC_Pool *newPool(int mustSucceed);

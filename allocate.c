@@ -210,6 +210,17 @@ void *ggggc_malloc(struct GGGGC_Descriptor *descriptor)
     header.descriptor__ptr = descriptor;
     header.isMarked = 0;
     header.age = 0;
+    if(ggggc_forceOldExpand) {
+        struct GGGGC_Pool * temp = newPool(1);
+        struct GGGGC_Pool * poolIter = ggggc_sunnyvaleRetirement;
+        while (poolIter) {
+            if (!poolIter->next) {
+                poolIter->next = temp;
+                break;
+            }
+            poolIter = poolIter->next;
+        }
+    }
     if (!ggggc_curPool) {
         ggggc_curPool = ggggc_fromList = newPool(1);
         ggggc_toList = newPool(1);
@@ -220,6 +231,7 @@ void *ggggc_malloc(struct GGGGC_Descriptor *descriptor)
         ggggc_freeObjectDesc->header.descriptor__ptr = ggggc_freeObjectDesc;
         ggggc_freeObjectDesc->size = 3;
         ggggc_oldFreeList = NULL;
+        ggggc_forceOldExpand = 0;
     }
     ggc_size_t size = descriptor->size;
     /*
