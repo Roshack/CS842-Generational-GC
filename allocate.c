@@ -208,6 +208,8 @@ void *ggggc_malloc(struct GGGGC_Descriptor *descriptor)
     void * userPtr = NULL;
     struct GGGGC_Header header;
     header.descriptor__ptr = descriptor;
+    header.isMarked = 0;
+    header.age = 0;
     if (!ggggc_curPool) {
         ggggc_curPool = ggggc_fromList = newPool(1);
         ggggc_toList = newPool(1);
@@ -217,6 +219,7 @@ void *ggggc_malloc(struct GGGGC_Descriptor *descriptor)
         ggggc_freeObjectDesc = (struct GGGGC_Descriptor *) malloc(sizeof(struct GGGGC_Descriptor));
         ggggc_freeObjectDesc->header.descriptor__ptr = ggggc_freeObjectDesc;
         ggggc_freeObjectDesc->size = 3;
+        ggggc_oldFreeList = NULL;
     }
     ggc_size_t size = descriptor->size;
     /*
@@ -268,9 +271,14 @@ void *ggggc_mallocPointerArray(ggc_size_t sz)
 /* allocate a data array */
 void *ggggc_mallocDataArray(ggc_size_t nmemb, ggc_size_t size)
 {
+    struct GGGGC_Descriptor *descriptor = NULL;
+    struct GGGGC_Array *ret = NULL;
     ggc_size_t sz = ((nmemb*size)+sizeof(ggc_size_t)-1)/sizeof(ggc_size_t);
-    struct GGGGC_Descriptor *descriptor = ggggc_allocateDescriptorDA(sz + 1 + sizeof(struct GGGGC_Header)/sizeof(ggc_size_t));
-    struct GGGGC_Array *ret = (struct GGGGC_Array *) ggggc_malloc(descriptor);
+
+    GGC_PUSH_2(descriptor, ret);
+
+    descriptor = ggggc_allocateDescriptorDA(sz + 1 + sizeof(struct GGGGC_Header)/sizeof(ggc_size_t));
+    ret = (struct GGGGC_Array *) ggggc_malloc(descriptor);
     ret->length = nmemb;
     return ret;
 }

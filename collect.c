@@ -80,18 +80,24 @@ void process_pseudoRoots() {
                 ggc_size_t * cardEnd = ((ggc_size_t *) poolIter) + (cardIter+1)*GGGGC_WORDS_PER_CARD;
                 int foundPseudoRoot = 0;
                 while (objIter < cardEnd) {
-                    struct GGGGC_Descriptor * desc = (struct GGGGC_Descriptor *) cleanForwardAddress((void *) objIter); 
+                    struct GGGGC_Descriptor * desc = ((struct GGGGC_Header *) objIter)->descriptor__ptr; 
+                    //fprintf(stderr,"objiter is %lx and it's descriptor is %lx\r\n", lui objIter, lui desc);
                     if (desc == ggggc_freeObjectDesc) {
 
                         objIter = objIter + ((struct GGGGC_FreeObject *) objIter)->size;
+                        continue;
+                    }
+                    if (!desc) {
+                        objIter = cardEnd;
                         continue;
                     }
                     if (desc->pointers[0]&1) {
                         long unsigned int bitIter = 1;
                         int z = 0;
                         while (z < desc->size) {
-                            if (desc->pointers[0] & bitIter) {
+                            if (desc->pointers[0] & bitIter && z!=1 && z!=2) {
                                 void * loc = (void *) (objIter +z);
+                                //printf("About to process %lx from %lx words into object %lx\r\n", lui loc, lui z, lui objIter);
                                 ggggc_process(loc);
                                 struct GGGGC_Header * obj = *((struct GGGGC_Header **) loc);
                                 if (isYoung(obj)) {
@@ -117,12 +123,12 @@ void process_pseudoRoots() {
 
 void ggggc_unmarkObject(void * x) {
     struct GGGGC_Header * obj = (struct GGGGC_Header *) returnCleanAge(x);
-    obj->descriptor__ptr = (void *) (((ggc_size_t) obj->descriptor__ptr) & 0xFFFFFFFFFFFE);
+    obj->isMarked = 0;
 }
 
 void ggggc_markObject(void * x) {
     struct GGGGC_Header * obj = (struct GGGGC_Header *) returnCleanAge(x);
-    obj->descriptor__ptr = (void *) (((ggc_size_t) obj->descriptor__ptr) | 1L);
+    obj->isMarked = 1;
 }
 
 void ggggc_mark() {
@@ -131,9 +137,9 @@ void ggggc_mark() {
         //printf("reading location %lx", lui x);  
         struct GGGGC_Header * obj = returnCleanAge((void *) *((struct GGGGC_Header **) x));
         //printf(" which points to %lx\r\n", lui obj);
-        if (obj && !alreadyMoved(obj)) {
+        if (obj && !obj->isMarked) {
             struct GGGGC_Header * uncleanObj =  *((struct GGGGC_Header **) x);
-            struct GGGGC_Descriptor * desc = cleanForwardAddress(obj);
+            struct GGGGC_Descriptor * desc = obj->descriptor__ptr;
             ggggc_markObject(obj);
             //printf("readout 1 descriptor is %lx\r\n", lui desc);
             if (desc->pointers[0]&1) {
@@ -141,14 +147,16 @@ void ggggc_mark() {
                 int z = 0;
                 //printf("readout2\r\n");
                 while (z < desc->size) {
-                    if (desc->pointers[0] & bitIter) {
+                    if (desc->pointers[0] & bitIter && !z==1 && z!=2) {
                         void * loc = (void *) ( ((ggc_size_t *) obj) + z );
+                        //printf("About to process %lx from %lx words into object %lx\r\n", lui loc, lui z, lui obj);
                         StackLL_Push(loc);
                     }
                     z++;
                     bitIter = bitIter<<1;
                 }
             } else {
+                //printf("About to process %lx an object itself \r\n", lui obj);
                 ggggc_process((void *) obj);
             }
         }
@@ -181,28 +189,40 @@ void ggggc_oldSweep() {
         while (objIter < poolIter->free) {
             ggggc_unmarkObject((void *) objIter);
             struct GGGGC_Header * obj = (struct GGGGC_Header *) objIter;
+            if (!obj->descriptor__ptr->size) {
+                printf("obj %lx has descriptor %lx and size %lx\r\n", lui objIter, lui obj->descriptor__ptr, obj->descriptor__ptr->size);
+                objIter = poolIter->free;
+                continue;
+            }
             objIter = objIter + obj->descriptor__ptr->size;
         }
         poolIter=poolIter->next;
     }
-    poolIter = ggggc_fromList;
+    poolIter = ggggc_toList;
     while (poolIter) {
         ggc_size_t *objIter = poolIter->start;
         while (objIter < poolIter->free) {
             ggggc_unmarkObject((void *) objIter);
             struct GGGGC_Header * obj = (struct GGGGC_Header *) objIter;
-            objIter = objIter + obj->descriptor__ptr->size;
+            objIter = objIter + obj->descriptor__ptr->size; 
+            if (!obj->descriptor__ptr->size) {
+                printf("obj %lx has descriptor %lx and size %lx\r\n", lui objIter, lui obj->descriptor__ptr, obj->descriptor__ptr->size);
+                objIter = poolIter->free;
+                continue;
+            }
         }
+        //printf("pooliter is %lx, pooliter next is %lx\r\n", lui poolIter, lui poolIter->next);
         poolIter=poolIter->next;
     }
 }
 
-void ggggc_collectFull(){/*
+void ggggc_collectFull(){
+    ggggc_oldFreeList = NULL;
     printf("doing a full collect!\r\n");
     ggggc_markOld();
     printf("Finished mark old\r\n");
     ggggc_oldSweep();
-    printf("Finished sweep\r\n");*/
+    printf("Finished sweep\r\n");
     return;
 }
 
@@ -227,6 +247,7 @@ void ggggc_collect()
         ggc_size_t *** ptrptr = (ggc_size_t ***) stack_iter->pointers;
         ggc_size_t ptrIter = 0;
         while (ptrIter < stack_iter->size) {
+            //printf("About to process %lx from ptrstack\r\n", lui (void *) ptrptr[ptrIter]);
             ggggc_process((void *) ptrptr[ptrIter]);        
             ptrIter++;               
         }
@@ -259,14 +280,16 @@ void scan(void *x) {
         long unsigned int bitIter = 1;
         int z = 0;
         while (z < desc->size) {
-            if (desc->pointers[0] & bitIter) {
+            if (desc->pointers[0] & bitIter && z!=1 && z!=2) {
                 void * loc = (void *) ( ((ggc_size_t *) ref) + z );
+                //printf("About to process %lx from %lx words into object %lx\r\n", lui loc, lui z, lui ref);
                 ggggc_process(loc);
             }
             z++;
             bitIter = bitIter<<1;
         }
     } else {
+        //printf("About to process %lx an object itself \r\n", lui ref);
         ggggc_process((void *) ref);
     }
 }
@@ -279,9 +302,10 @@ ggc_size_t ageSizeT(void * x) {
 void ggggc_process(void * x) {
     struct GGGGC_Header * obj = returnCleanAge((void *) *((struct GGGGC_Header **) x));
     struct GGGGC_Header * uncleanObj =  *((struct GGGGC_Header **) x);
+    //printf("PRocesssing %lx gotten from %lx\r\n", lui obj, lui x);
     if (obj && isYoung((void *) obj)) {
         *((struct GGGGC_Header **) x) = (struct GGGGC_Header *) forward((void *) uncleanObj);
-        *((struct GGGGC_Header **) x) = (struct GGGGC_Header *) (((ggc_size_t) *((struct GGGGC_Header **) x)) | ageSizeT(uncleanObj));
+        //*((struct GGGGC_Header **) x) = (struct GGGGC_Header *) (((ggc_size_t) *((struct GGGGC_Header **) x)) | ageSizeT(uncleanObj));
     }
 }
 
@@ -304,6 +328,7 @@ void * cleanForwardBit(void * x) {
 
 void * forward(void * from)
 {
+    //printf("checking %lx \r\n", lui from);
     if (alreadyMoved(from)) {
         return cleanForwardBit(from);
     }
@@ -320,7 +345,7 @@ void * forward(void * from)
                 // Exactly 0 is great, we can allocate. But we need to update
                 // the freelist to the next then!
                 if (freeIter->size - descriptor->size == 0) {
-                    printf("Allocating to free object %lx with 0 remainder, freeIter next is %lx\r\n", lui freeIter, lui freeIter->next);
+                    //printf("Allocating to free object %lx with 0 remainder, freeIter next is %lx\r\n", lui freeIter, lui freeIter->next);
                     toRef = (struct GGGGC_Header *) freeIter;
                     if (lastFree) {
                         lastFree->next = freeIter->next;
@@ -344,13 +369,16 @@ void * forward(void * from)
                     } else {
                         ggggc_oldFreeList = newFree;
                     }
-                    printf("Allocating to freeobject %lx of size %lu and new free is %lx\r\n", lui freeIter, descriptor->size, lui newFree);
+                    //printf("Allocating to freeobject %lx of size %lu and new free is %lx\r\n", lui freeIter, descriptor->size, lui newFree);
                     break;
                 }
             }
             lastFree = freeIter;
             freeIter = freeIter->next;
             
+        }
+        if (toRef) {
+            printf("promoting %lx to %lx with descritpor ptr %lx\r\n", lui fromRef, lui toRef, lui descriptor);
         }
         if (!toRef) {
             //printf("object is %lx and descriptor is %lx\r\n", lui from, lui descriptor);
@@ -396,7 +424,9 @@ void * forward(void * from)
         }
     }
     memcpy(toRef,fromRef,sizeof(ggc_size_t)*descriptor->size);
+    //printf("old fromref descriptor pointer %lx\r\n", lui fromRef->descriptor__ptr);
     fromRef->descriptor__ptr = (struct GGGGC_Descriptor *) ( ((ggc_size_t) toRef) | 1L);
+    //printf("New fromref descriptor pointer %lx\r\n", lui fromRef->descriptor__ptr);
     if(isOldEnough(from) && !isHalfCollected(from)) {
         // If it's old enough and it's not half collected me promoted it succesfully.
         // need to maybe update cards if necessary.
@@ -427,6 +457,27 @@ void * forward(void * from)
 }
 
 ggc_size_t isOldEnough(void *x) {
+    struct GGGGC_Header * hdr =  (struct GGGGC_Header *) x;
+    return (hdr->age > 1);
+}
+
+int isHalfCollected(void *x) {
+    struct GGGGC_Header * hdr =  (struct GGGGC_Header *) x;
+    return (hdr->age > 2);
+}
+
+void cleanAge(void *x) {
+    struct GGGGC_Header * hdr =  (struct GGGGC_Header *) x;
+    hdr->age = 0;
+}
+
+void incrementAge(void *x) {
+    struct GGGGC_Header * hdr =  (struct GGGGC_Header *) x;
+    hdr->age = hdr->age + 1;
+}
+
+/*
+ggc_size_t isOldEnough(void *x) {
     ggc_size_t desc = (ggc_size_t) ((struct GGGGC_Header *) x)->descriptor__ptr;
     return (desc & (1L<<2));
 }
@@ -437,6 +488,7 @@ int isHalfCollected(void *x) {
     ggc_size_t secondCheck = ((ggc_size_t) header->descriptor__ptr) & (1L << 2);
     return (firstCheck && secondCheck);
 }
+
 
 void cleanAge(void * x) {
     struct GGGGC_Header * header = (struct GGGGC_Header *) x;
@@ -451,7 +503,7 @@ void incrementAge(void *x) {
         return;
     }
     header->descriptor__ptr = (struct GGGGC_Descriptor *) ( ((ggc_size_t) header->descriptor__ptr) + (1L << 1) );
-}
+}*/
 
 void * returnCleanAge(void *x) {
     return (void *) (((ggc_size_t) x) & 0xFFFFFFFFFFFFFFF9);

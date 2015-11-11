@@ -1,6 +1,6 @@
 void ggggc_unmarkObject(void * x) {
     struct GGGGC_Header * obj = (struct GGGGC_Header *) returnCleanAge(x);
-    obj->descriptor__ptr = (void *) (((ggc_size_t) obj->descriptor__ptr) & 0xFFFFFFFFFFFE);
+    obj->descriptor__ptr = (void *) (((ggc_size_t) obj->descriptor__ptr) & 0xFFFFFFFFFFFFFFFE);
 }
 
 void ggggc_markObject(void * x) {

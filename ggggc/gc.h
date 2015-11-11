@@ -144,6 +144,8 @@ struct GGGGC_Pool {
 /* GC header (this shape must be shared by all GC'd objects) */
 struct GGGGC_Header {
     struct GGGGC_Descriptor *descriptor__ptr;
+    ggc_size_t isMarked;
+    ggc_size_t age;
 };
 
 /* GGGGC descriptors are GC objects that describe the shape of other GC objects */
@@ -154,7 +156,7 @@ struct GGGGC_Descriptor {
     ggc_size_t pointers[1]; /* location of pointers within the object (as a special
                          * case, if pointers[0]|1==0, this means "no pointers") */
 };
-#define GGGGC_DESCRIPTOR_DESCRIPTION 0x3 /* first two words are pointers */
+#define GGGGC_DESCRIPTOR_DESCRIPTION 0x9 /* first two words are pointers */
 #define GGGGC_DESCRIPTOR_WORDS_REQ(sz) (((sz) + GGGGC_BITS_PER_WORD - 1) / GGGGC_BITS_PER_WORD)
 
 /* descriptor slots are global locations where descriptors may eventually be
