@@ -134,7 +134,6 @@ static struct GGGGC_Pool *newPool(int mustSucceed)
     ret->next = NULL;
     ret->free = ret->start;
     ret->end = (ggc_size_t *) ((unsigned char *) ret + GGGGC_POOL_BYTES);
-
     return ret;
 }
 
@@ -215,10 +214,16 @@ void *ggggc_malloc(struct GGGGC_Descriptor *descriptor)
         ggggc_sunnyvaleRetirement = ggggc_curOldPool = newPool(1);
         ggggc_forceCollect = 0;
         ggggc_forceFullCollect = 0;
+        ggggc_freeObjectDesc = (struct GGGGC_Descriptor *) malloc(sizeof(struct GGGGC_Descriptor));
+        ggggc_freeObjectDesc->header.descriptor__ptr = ggggc_freeObjectDesc;
+        ggggc_freeObjectDesc->size = 3;
     }
-
-
     ggc_size_t size = descriptor->size;
+    /*
+    if (size < sizeof(struct GGGGC_FreeObject)){
+        size = sizeof(struct GGGGC_FreeObject);
+    }*/
+    
     if (ggggc_curPool->free + size >= ggggc_curPool->end) {
         if (ggggc_curPool->next) {
             ggggc_curPool = ggggc_curPool->next;

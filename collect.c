@@ -55,7 +55,7 @@ void * StackLL_Pop()
 {
     void * x = markStack->data;
     struct StackLL *old = markStack;
-    if (x) {
+    if (markStack->next) {
         markStack = markStack->next;
         free(old);
     }
@@ -80,7 +80,12 @@ void process_pseudoRoots() {
                 ggc_size_t * cardEnd = ((ggc_size_t *) poolIter) + (cardIter+1)*GGGGC_WORDS_PER_CARD;
                 int foundPseudoRoot = 0;
                 while (objIter < cardEnd) {
-                    struct GGGGC_Descriptor * desc = (struct GGGGC_Descriptor *) cleanForwardAddress((void *) objIter);
+                    struct GGGGC_Descriptor * desc = (struct GGGGC_Descriptor *) cleanForwardAddress((void *) objIter); 
+                    if (desc == ggggc_freeObjectDesc) {
+
+                        objIter = objIter + ((struct GGGGC_FreeObject *) objIter)->size;
+                        continue;
+                    }
                     if (desc->pointers[0]&1) {
                         long unsigned int bitIter = 1;
                         int z = 0;
@@ -110,11 +115,94 @@ void process_pseudoRoots() {
     }
 }
 
-void ggggc_collectFull(){
-    StackLL_Init();
-    ggggc_forceFullCollect = 0;
+void ggggc_unmarkObject(void * x) {
+    struct GGGGC_Header * obj = (struct GGGGC_Header *) returnCleanAge(x);
+    obj->descriptor__ptr = (void *) (((ggc_size_t) obj->descriptor__ptr) & 0xFFFFFFFFFFFE);
+}
 
+void ggggc_markObject(void * x) {
+    struct GGGGC_Header * obj = (struct GGGGC_Header *) returnCleanAge(x);
+    obj->descriptor__ptr = (void *) (((ggc_size_t) obj->descriptor__ptr) | 1L);
+}
+
+void ggggc_mark() {
+    void * x = StackLL_Pop();
+    while (x) {
+        //printf("reading location %lx", lui x);  
+        struct GGGGC_Header * obj = returnCleanAge((void *) *((struct GGGGC_Header **) x));
+        //printf(" which points to %lx\r\n", lui obj);
+        if (obj && !alreadyMoved(obj)) {
+            struct GGGGC_Header * uncleanObj =  *((struct GGGGC_Header **) x);
+            struct GGGGC_Descriptor * desc = cleanForwardAddress(obj);
+            ggggc_markObject(obj);
+            //printf("readout 1 descriptor is %lx\r\n", lui desc);
+            if (desc->pointers[0]&1) {
+                long unsigned int bitIter = 1;
+                int z = 0;
+                //printf("readout2\r\n");
+                while (z < desc->size) {
+                    if (desc->pointers[0] & bitIter) {
+                        void * loc = (void *) ( ((ggc_size_t *) obj) + z );
+                        StackLL_Push(loc);
+                    }
+                    z++;
+                    bitIter = bitIter<<1;
+                }
+            } else {
+                ggggc_process((void *) obj);
+            }
+        }
+        x = StackLL_Pop();
+    }
+
+}
+
+void ggggc_markOld() {
+    StackLL_Init();
+    struct GGGGC_PointerStack *stack_iter = ggggc_pointerStack;
+    while (stack_iter) {
+        ggc_size_t *** ptrptr = (ggc_size_t ***) stack_iter->pointers;
+        ggc_size_t ptrIter = 0;
+        while (ptrIter < stack_iter->size) {
+            StackLL_Push((void *) ptrptr[ptrIter]);  
+            ggggc_mark();      
+            ptrIter++;               
+        }
+        stack_iter = stack_iter->next;
+    }
     StackLL_Clean();
+
+}
+
+void ggggc_oldSweep() {
+    struct GGGGC_Pool *poolIter = ggggc_sunnyvaleRetirement;
+    while (poolIter) {
+        ggc_size_t *objIter = poolIter->start;
+        while (objIter < poolIter->free) {
+            ggggc_unmarkObject((void *) objIter);
+            struct GGGGC_Header * obj = (struct GGGGC_Header *) objIter;
+            objIter = objIter + obj->descriptor__ptr->size;
+        }
+        poolIter=poolIter->next;
+    }
+    poolIter = ggggc_fromList;
+    while (poolIter) {
+        ggc_size_t *objIter = poolIter->start;
+        while (objIter < poolIter->free) {
+            ggggc_unmarkObject((void *) objIter);
+            struct GGGGC_Header * obj = (struct GGGGC_Header *) objIter;
+            objIter = objIter + obj->descriptor__ptr->size;
+        }
+        poolIter=poolIter->next;
+    }
+}
+
+void ggggc_collectFull(){/*
+    printf("doing a full collect!\r\n");
+    ggggc_markOld();
+    printf("Finished mark old\r\n");
+    ggggc_oldSweep();
+    printf("Finished sweep\r\n");*/
     return;
 }
 
@@ -122,6 +210,7 @@ void ggggc_collectFull(){
 void ggggc_collect()
 {
     // Initialize our work stack.
+    //printf("beginning normal collection\r\n");
     StackLL_Init();
     struct GGGGC_PointerStack *stack_iter = ggggc_pointerStack;
     // Set the curpool to the toList so we can allocate to the curpool and update it
@@ -143,7 +232,9 @@ void ggggc_collect()
         }
         stack_iter = stack_iter->next;
     }
+    //printf("before pseudoroots\r\n");
     process_pseudoRoots();
+    //printf("after pseudoroots\r\n");
     void * workIter = StackLL_Pop();
     while (workIter) {
         scan(workIter);
@@ -153,22 +244,7 @@ void ggggc_collect()
     if(ggggc_forceFullCollect) {
         ggggc_collectFull();
     }
-    
-    /*
-    struct GGGGC_Pool * poolIter = ggggc_fromList;
-    while (poolIter) {
-        ggc_size_t * objIter = poolIter->start;
-        while (objIter < poolIter->free) {
-            struct GGGGC_Header * obj = (struct GGGGC_Header *) objIter;
-            printf("Have object %lx with descriptor pointer %lx\r\n", lui obj, lui obj->descriptor__ptr);
-            objIter += obj->descriptor__ptr->size;
-        }
-        poolIter = poolIter->next;
-    }
-    */
-    // Now updated references.
-    // Deprecated since implementing a cleaner cheney's algorithm.
-    //ggggc_updateRefs();
+    //printf("finishing normal collcet\r\n");
 }
 
 
@@ -234,24 +310,69 @@ void * forward(void * from)
     struct GGGGC_Header * toRef = NULL;
     struct GGGGC_Header * fromRef = (struct GGGGC_Header *) returnCleanAge(from);
     struct GGGGC_Descriptor * descriptor =cleanForwardAddress(from);
+    //printf("object is %lx and descriptor is %lx\r\n", lui from, lui descriptor);
     if (isOldEnough(from)) {
-        if (ggggc_curOldPool->free + descriptor->size < ggggc_curOldPool->end) {
-            toRef = (struct GGGGC_Header *) ggggc_curOldPool->free;
-            ggggc_curOldPool->free = ggggc_curOldPool->free + descriptor->size;
-        } else {
-            ggggc_curOldPool = ggggc_curOldPool->next;
-            while(ggggc_curOldPool) {
-                if (ggggc_curOldPool->free + descriptor->size < ggggc_curOldPool->end) {
-                    toRef = (struct GGGGC_Header *) ggggc_curOldPool->free;
-                    ggggc_curOldPool->free = ggggc_curOldPool->free + descriptor->size;
+        // First try to find space in the free list.
+        struct GGGGC_FreeObject * freeIter = ggggc_oldFreeList;
+        struct GGGGC_FreeObject * lastFree = NULL;
+        while (freeIter) {
+            if (freeIter->size > descriptor->size) {
+                // Exactly 0 is great, we can allocate. But we need to update
+                // the freelist to the next then!
+                if (freeIter->size - descriptor->size == 0) {
+                    printf("Allocating to free object %lx with 0 remainder, freeIter next is %lx\r\n", lui freeIter, lui freeIter->next);
+                    toRef = (struct GGGGC_Header *) freeIter;
+                    if (lastFree) {
+                        lastFree->next = freeIter->next;
+                    } else {
+                        ggggc_oldFreeList = freeIter->next;
+                    }
                     break;
                 }
-                ggggc_curOldPool = ggggc_curOldPool->next;
+                // Can't allocate where we would have less than 3 words left since
+                // we need to be able to put a new free object in the remaining space
+                // and free objects are 3 words!
+                if (freeIter->size - descriptor->size > 2) {
+                    toRef = (struct GGGGC_Header *) freeIter;
+                    // Need to make a new free object for the new free space
+                    struct GGGGC_FreeObject * newFree = (struct GGGGC_FreeObject *) (((ggc_size_t *)freeIter)+ descriptor->size);
+                    newFree->size = (freeIter->size - descriptor->size);
+                    newFree->next = freeIter->next;
+                    newFree->descriptor__ptr = ggggc_freeObjectDesc;
+                    if (lastFree) {
+                        lastFree->next = newFree;
+                    } else {
+                        ggggc_oldFreeList = newFree;
+                    }
+                    printf("Allocating to freeobject %lx of size %lu and new free is %lx\r\n", lui freeIter, descriptor->size, lui newFree);
+                    break;
+                }
             }
-            if (!toRef) {
-                // We couldn't find an old pool with enough memory. We now need to do a full collect
-                // and be very sad about this fact.
-                ggggc_forceFullCollect = 1;
+            lastFree = freeIter;
+            freeIter = freeIter->next;
+            
+        }
+        if (!toRef) {
+            //printf("object is %lx and descriptor is %lx\r\n", lui from, lui descriptor);
+            //printf("GGGGC_curoldpool is %lx\r\n", lui ggggc_curOldPool);
+            if (ggggc_curOldPool->free + descriptor->size < ggggc_curOldPool->end) {
+                toRef = (struct GGGGC_Header *) ggggc_curOldPool->free;
+                ggggc_curOldPool->free = ggggc_curOldPool->free + descriptor->size;
+            } else {
+                struct GGGGC_Pool *poolIter = ggggc_curOldPool->next;
+                while(poolIter) {
+                    if (poolIter->free + descriptor->size < poolIter->end) {
+                        toRef = (struct GGGGC_Header *) poolIter->free;
+                        poolIter->free = poolIter->free + descriptor->size;
+                        break;
+                    }
+                    poolIter = poolIter->next;
+                }
+                if (!toRef) {
+                    // We couldn't find an old pool with enough memory. We now need to do a full collect
+                    // and be very sad about this fact.
+                    ggggc_forceFullCollect = 1;
+                }
             }
         }
     }
@@ -326,6 +447,9 @@ void incrementAge(void *x) {
     // If the object has survived 0 GC cycles yet this will set it's first age bit,
     // if it's survived one already the first age bit will carry to the next age bit!
     struct GGGGC_Header * header = (struct GGGGC_Header *) returnCleanAge(x);
+    if (isHalfCollected(x)) {
+        return;
+    }
     header->descriptor__ptr = (struct GGGGC_Descriptor *) ( ((ggc_size_t) header->descriptor__ptr) + (1L << 1) );
 }
 
@@ -343,6 +467,3 @@ int ggggc_yield()
     return 0;
 }
 
-#ifdef __cplusplus
-}
-#endif

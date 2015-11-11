@@ -64,12 +64,15 @@ typedef size_t ggc_size_t;
 #define GGGGC_CARDS_PER_POOL (GGGGC_POOL_BYTES/GGGGC_CARD_BYTES)
 #define GGGGC_FIRST_OBJ_DEFAULT  (GGGGC_WORDS_PER_CARD + 1)
 #define lui (long unsigned int)
+#define GGGGC_MIN_SIZE sizeof(struct GGGGC_FreeObject)
 
 /* an empty defined for all the various conditions in which empty defines are necessary */
 #define GGGGC_EMPTY
 
 extern int ggggc_forceCollect;
 extern int ggggc_forceFullCollect;
+extern struct GGGGC_Descriptor *ggggc_freeObjectDesc;
+extern struct GGGGC_FreeObject *ggggc_oldFreeList;
 
 // Check if an object has already been moved
 long unsigned int alreadyMoved(void * x);
@@ -99,11 +102,19 @@ void * forward(void * from);
 // Return thej cleaned forward address for the moved object at x.
 void * cleanForwardAddress(void * x);
 
+void ggggc_collectFull();
+
 // Get the bits that need to be set for an age.
 ggc_size_t ageSizeT(void * x);
 
 // Process objects
 void ggggc_process(void * x);
+
+struct GGGGC_FreeObject {
+    struct GGGGC_Descriptor *descriptor__ptr;
+    ggc_size_t size;
+    struct GGGGC_FreeObject * next;
+};
 
 /* GC pool (forms a list) */
 struct GGGGC_Pool {

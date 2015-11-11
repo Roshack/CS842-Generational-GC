@@ -254,7 +254,7 @@ int main() {
           longLivedTree = GC_NEW(Node0);
 #	endif
         Populate(kLongLivedTreeDepth, longLivedTree);
-
+        ggggc_collectFull();
         // Create long-lived array, filling half of it
 	printf(" Creating a long-lived array of %d doubles\n", kArraySize);
 #	ifndef GC
@@ -266,6 +266,7 @@ int main() {
             array = GC_MALLOC(sizeof(double) * kArraySize);
 #	  endif
 #	endif
+        ggggc_collectFull();
         for (i = 0; i < kArraySize/2; ++i) {
                 array[i] = 1.0/i;
         }

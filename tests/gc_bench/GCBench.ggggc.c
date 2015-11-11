@@ -218,7 +218,7 @@ int main() {
         // Stretch the memory space quickly
         tempTree = MakeTree(kStretchTreeDepth);
         tempTree = 0;
-
+        ggggc_collectFull();
         // Create a long lived object
         printf(" Creating a long-lived binary tree of depth %d\n",
                kLongLivedTreeDepth);
@@ -233,8 +233,9 @@ int main() {
                 GGC_WAD(array, i, tval);
         }
         PrintDiagnostics();
-
+        ggggc_collectFull();
         for (d = kMinTreeDepth; d <= kMaxTreeDepth; d += 2) {
+                ggggc_collectFull();
                 TimeConstruction(d);
         }
 
