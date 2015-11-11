@@ -83,7 +83,7 @@ void process_pseudoRoots() {
                     struct GGGGC_Descriptor * desc = ((struct GGGGC_Header *) objIter)->descriptor__ptr; 
                     //fprintf(stderr,"objiter is %lx and it's descriptor is %lx\r\n", lui objIter, lui desc);
                     if (desc == ggggc_freeObjectDesc) {
-
+                        //printf("found free object at %lx list is %lx\r\n", lui objIter, lui ggggc_oldFreeList);
                         objIter = objIter + ((struct GGGGC_FreeObject *) objIter)->size;
                         continue;
                     }
@@ -108,6 +108,7 @@ void process_pseudoRoots() {
                             bitIter = bitIter<<1;
                         }
                     }
+                    //printf("increasing obj by %lx\r\n", desc->size);
                     objIter = objIter + desc->size;
                 }
                 if (!foundPseudoRoot) {
@@ -184,17 +185,96 @@ void ggggc_markOld() {
 
 void ggggc_oldSweep() {
     struct GGGGC_Pool *poolIter = ggggc_sunnyvaleRetirement;
+    struct GGGGC_FreeObject *lastFree = NULL;
+    struct GGGGC_FreeObject *current = NULL;
+    ggggc_oldFreeList = NULL;
     while (poolIter) {
         ggc_size_t *objIter = poolIter->start;
         while (objIter < poolIter->free) {
-            ggggc_unmarkObject((void *) objIter);
             struct GGGGC_Header * obj = (struct GGGGC_Header *) objIter;
+            struct GGGGC_Descriptor * desc = obj->descriptor__ptr;
+            ggc_size_t size = desc->size;
+            if (desc== ggggc_freeObjectDesc) {
+                size = ((struct GGGGC_FreeObject *) obj)->size;
+                if (lastFree) {
+                    lastFree->size += size;
+                } else {
+                    lastFree = (struct GGGGC_FreeObject *) obj;
+                }
+                objIter = objIter + size;
+                continue;
+                //printf("free object %lx size is %lx\r\n",lui obj, ((struct GGGGC_FreeObject *) obj)->size);
+            }
+            if (obj->isMarked) {
+                if (desc->pointers[0]&1) {
+                    long unsigned int bitIter = 1;
+                    int z = 0;
+                    while (z < desc->size && z!=1 && z!=2) {
+                        if (desc->pointers[0] & bitIter) {
+                            ggc_size_t * loc = (ggc_size_t *) ( ((ggc_size_t *) objIter) + z );
+                            GGGGC_WC((void *) objIter, (void *) *loc);
+                        }
+                        z++;
+                        bitIter = bitIter<<1;
+                    }
+                } else {
+                    GGGGC_WC((void *) objIter, (void *) desc);
+                }
+                ggggc_unmarkObject(objIter);
+                if (lastFree) {
+                    //printf("saving freeobject %lx of size %lu\r\n", lui lastFree, lastFree->size);
+                    if (!ggggc_oldFreeList) {
+                        lastFree->next = NULL;
+                        ggggc_oldFreeList = lastFree;
+                        current = lastFree;
+                    } else {
+                        current->next = lastFree;
+                        lastFree->next = NULL;
+                        current = lastFree;
+                    }
+                    lastFree = NULL;
+                }
+            } else {
+                // If it's free we need to update our free info...
+                if (lastFree) {
+                    // If last free exists that means the last thing we found
+                    // was ALSO free object.. coalesce by adding the size 
+                    // of the object to the size of last free! That's all you need to do!
+                    // I think... ^_^
+                    //printf("Coalescing object at %lx of size %lu into object %lx\r\n", lui objIter, size, lui lastFree);
+                    lastFree->size += size;
+                } else {
+                    //printf("Freeing object at %lx of size %lu\r\n", lui objIter, size);
+                    //printf("object %lx descriptor is %lx and that descriptor is %lx\r\n",lui objIter, lui desc, lui ggggc_freeObjectDesc);
+                    // If last free is null the last object we found was a live object
+                    // so last free needs to be made anew with this new free object!
+                    lastFree = (struct GGGGC_FreeObject *) objIter;
+                    lastFree->size = size;
+                    lastFree->descriptor__ptr = ggggc_freeObjectDesc;
+                }
+            }
             if (!obj->descriptor__ptr->size) {
-                printf("obj %lx has descriptor %lx and size %lx\r\n", lui objIter, lui obj->descriptor__ptr, obj->descriptor__ptr->size);
+                //printf("obj %lx has descriptor %lx and size %lx\r\n", lui objIter, lui obj->descriptor__ptr, obj->descriptor__ptr->size);
                 objIter = poolIter->free;
                 continue;
             }
-            objIter = objIter + obj->descriptor__ptr->size;
+            objIter = objIter + size;
+        }
+        if (lastFree) {
+            // If we get here and lastfree is a thing that means the last object in this pool was af ree object
+            // (and possibly many before it as well), so taht means we need to save this free object since we
+            // haven't saved it yet!
+            //printf("saving freeobject %lx of size %lu\r\n", lui lastFree, lastFree->size);
+            if (!ggggc_oldFreeList) {
+                lastFree->next = NULL;
+                ggggc_oldFreeList = lastFree;
+                current = lastFree;
+            }else {
+                current->next = lastFree;
+                lastFree->next = NULL;
+                current = lastFree;
+            }
+            lastFree = NULL;
         }
         poolIter=poolIter->next;
     }
@@ -206,7 +286,7 @@ void ggggc_oldSweep() {
             struct GGGGC_Header * obj = (struct GGGGC_Header *) objIter;
             objIter = objIter + obj->descriptor__ptr->size; 
             if (!obj->descriptor__ptr->size) {
-                printf("obj %lx has descriptor %lx and size %lx\r\n", lui objIter, lui obj->descriptor__ptr, obj->descriptor__ptr->size);
+                //printf("obj %lx has descriptor %lx and size %lx\r\n", lui objIter, lui obj->descriptor__ptr, obj->descriptor__ptr->size);
                 objIter = poolIter->free;
                 continue;
             }
@@ -218,11 +298,12 @@ void ggggc_oldSweep() {
 
 void ggggc_collectFull(){
     ggggc_oldFreeList = NULL;
-    printf("doing a full collect!\r\n");
+    //printf("doing a full collect!\r\n");
     ggggc_markOld();
-    printf("Finished mark old\r\n");
+    //printf("Finished mark old\r\n");
     ggggc_oldSweep();
-    printf("Finished sweep\r\n");
+    //printf("Finished sweep\r\n");
+    //printf("our free list is %lx\r\n", lui ggggc_oldFreeList);
     return;
 }
 
@@ -231,6 +312,7 @@ void ggggc_collect()
 {
     // Initialize our work stack.
     //printf("beginning normal collection\r\n");
+    //printf("our free list is %lx by the way\r\n", lui ggggc_oldFreeList);
     StackLL_Init();
     struct GGGGC_PointerStack *stack_iter = ggggc_pointerStack;
     // Set the curpool to the toList so we can allocate to the curpool and update it
@@ -369,16 +451,13 @@ void * forward(void * from)
                     } else {
                         ggggc_oldFreeList = newFree;
                     }
-                    //printf("Allocating to freeobject %lx of size %lu and new free is %lx\r\n", lui freeIter, descriptor->size, lui newFree);
+                    //printf("Allocating to freeobject %lx of size %lu and new free is %lx of size %lx\r\n", lui freeIter, descriptor->size, lui newFree, newFree->size);
                     break;
                 }
             }
             lastFree = freeIter;
             freeIter = freeIter->next;
             
-        }
-        if (toRef) {
-            printf("promoting %lx to %lx with descritpor ptr %lx\r\n", lui fromRef, lui toRef, lui descriptor);
         }
         if (!toRef) {
             //printf("object is %lx and descriptor is %lx\r\n", lui from, lui descriptor);
@@ -403,6 +482,9 @@ void * forward(void * from)
                 }
             }
         }
+    }
+    if (toRef) {
+        //printf("promoting %lx to %lx with descritpor ptr %lx\r\n", lui fromRef, lui toRef, lui descriptor);
     }
     if (!toRef) {
         if (ggggc_curPool->free + descriptor->size < ggggc_curPool->end) {

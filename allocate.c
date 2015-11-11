@@ -250,7 +250,9 @@ void *ggggc_malloc(struct GGGGC_Descriptor *descriptor)
     ggggc_curPool->free += size;
     ((struct GGGGC_Header *) userPtr)[0] = header;
     ggggc_zero_object((struct GGGGC_Header*)userPtr);
+    //printf("allocating user ptr %lx\r\n", lui userPtr);
     return userPtr;
+
 }
 
 

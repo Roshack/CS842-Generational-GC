@@ -1,0 +1,11 @@
+CS 842 Project 3 Generational Garbage Collector
+Rob Hackman
+
+Allocation:
+For allocation I used a simple bump pointer allocation technique since my young generation implemented semi-space copying.
+
+Collection:
+For collection in my young generation I used semi-space copying and for my old generation Mark and Sweep as per the assignment spec. I promoted young objects when they had survived two GC cycles. 
+
+Coalescence:
+For coalescing memory in my old generation I did so while running a full collection, while sweeping through I just kept track of when I was finding free objects and if I found a "streak" of free objects I would just keep updating the size of the first free object I found with the size of the new object in the streak, whenever a streak was broken I would "save" that free object by placing it as the next object in the free list.
